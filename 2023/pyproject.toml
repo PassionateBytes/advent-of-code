@@ -1,18 +1,10 @@
-[tool.poetry]
+[project]
 name = "advent-of-code"
 version = "0.1.0"
-description = ""
-authors = ["IrrerPolterer <irrer.polterer@posteo.de>"]
+description = "Add your description here"
 readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.11"
-
-
-[tool.poetry.group.dev.dependencies]
-ipykernel = "^6.27.1"
-ipython = "^8.18.1"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires-python = ">=3.13"
+dependencies = [
+    "ipykernel>=7.1.0",
+    "ipython>=9.8.0",
+]
