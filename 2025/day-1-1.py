@@ -1,6 +1,6 @@
 import re
 
-INPUT = "input/day-1-1.txt"
+INPUT = "input/day-1.txt"
 
 position = 50
 dial_size = 100
