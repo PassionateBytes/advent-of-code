@@ -2,8 +2,15 @@ import polars as pl
 from dataclasses import dataclass
 from typing import Generator
 import time
+import multiprocessing as mp
+import signal
 
 INPUT = "input/day-9.txt"
+
+
+def init_worker() -> None:
+    """Initialize worker process to ignore SIGINT (let main process handle it)."""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +103,13 @@ class Rectangle:
         )
 
 
+def check_rectangle_worker(args: tuple[Rectangle, list[Edge]]) -> Rectangle | None:
+    rectangle, polygon = args
+    if rectangle.contained_in_polygon(polygon):
+        return rectangle
+    return None
+
+
 def main():
     input_lf = pl.scan_csv(
         INPUT, has_header=False, schema={"x": pl.Int64, "y": pl.Int64}
@@ -104,17 +118,51 @@ def main():
     rectangles = get_rectangles(input_lf)
     polygon = get_polygon(input_lf)
 
+    # num_cores = mp.cpu_count()
+    num_cores = 100
+    batch_size = num_cores
+
     start = time.monotonic()
-    for i, rectangle in enumerate(rectangles):
-        now = time.monotonic()
-        elapsed = now - start
-        remaining = (len(rectangles) - i) * elapsed / (i + 1)
-        print(f" {i}/{len(rectangles)} | {100 * i / len(rectangles):.2f}% | {int(elapsed//60):02d}:{int(elapsed%60):02d} elapsed | {int(remaining//60):02d}:{int(remaining%60):02d} remaining", end="\r")
+    largest_rectangle = None
 
-        if rectangle.contained_in_polygon(polygon):
-            break
+    try:
+        with mp.Pool(num_cores, initializer=init_worker) as pool:
+            for batch_start in range(0, len(rectangles), batch_size):
+                batch_end = min(batch_start + batch_size, len(rectangles))
+                batch = rectangles[batch_start:batch_end]
 
-    print(f"Largest rectangle fully inside the polygon: {rectangle}")
+                # Show progress
+                now = time.monotonic()
+                elapsed = now - start
+                remaining = (
+                    (len(rectangles) - batch_start) * elapsed / (batch_start + 1)
+                    if batch_start > 0
+                    else 0
+                )
+                elapsed_str = f"{int(elapsed // 3600):02d}:{int((elapsed % 3600) // 60):02d}:{int(elapsed % 60):02d}"
+                remaining_str = f"{int(remaining // 3600):02d}:{int((remaining % 3600) // 60):02d}:{int(remaining % 60):02d}"
+                print(
+                    f"  {batch_start}/{len(rectangles)} | {100 * batch_start / len(rectangles):.2f}% | {elapsed_str} elapsed | {remaining_str} remaining",
+                    end="\r",
+                )
+
+                # Process batch in parallel using imap_unordered for better interruptibility
+                args = [(rect, polygon) for rect in batch]
+                results = list(
+                    pool.imap_unordered(check_rectangle_worker, args, chunksize=1)
+                )
+
+                # Check if any succeeded
+                successful = [r for r in results if r is not None]
+                if successful:
+                    # Pick the largest one (they're already sorted by area descending)
+                    largest_rectangle = max(successful, key=lambda r: r.area)
+                    break
+
+        print(f"\nLargest rectangle fully inside the polygon: {largest_rectangle}")
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user. Exiting...")
+        raise
 
 
 def get_rectangles(input_lf: pl.LazyFrame) -> list[Rectangle]:
